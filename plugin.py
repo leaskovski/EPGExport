@@ -33,6 +33,7 @@ from Components.Label import Label
 from Components.config import config, configfile, ConfigText, ConfigYesNo, ConfigInteger, ConfigSelection, ConfigEnableDisable, ConfigSlider, NoSave, ConfigSubsection, getConfigListEntry, ConfigIP, ConfigSubList, ConfigClock
 from Components.ConfigList import ConfigListScreen
 from Components.Sources.StaticText import StaticText
+from Components.Renderer.Picon import getPiconName
 from enigma import getDesktop, eTimer, eActionMap, eEPGCache, eServiceCenter, eServiceReference,  eTimer, getDesktop, iPlayableService, eSize, eConsoleAppContainer
 from Screens.InfoBar import InfoBar
 from ServiceReference import ServiceReference
@@ -926,6 +927,14 @@ class EPGExport(Screen):
 			channel_id=service_name
 		return channel_id
 
+	def piconURL(self, service):
+		service_name = service.getServiceName().encode('ascii', 'ignore')
+		picon_file = getPiconName(service_name)
+		if picon_file:
+			ip = ConfigIP(default = [192,168,0,100])
+			picon_url = "http://"+ip+":80/picon/"+os_path(picon_file).name
+		return picon_url
+
 	def generateChannels(self):
 		cprint("Building XMLTV channel list file")
 		sp=[]
@@ -991,6 +1000,10 @@ class EPGExport(Screen):
 				xmltv_channel.set('id', service_id)
 				xmltv_cname = etree.SubElement(xmltv_channel,'display-name',lang=self.language)
 				xmltv_cname.text = service_name
+				service_picon=self.piconURL(service)
+				if service_picon:
+					xmltv_cicon = etree.SubElement(xmltv_channel,'icon')
+					xmltv_cicon.set('src',service_picon)
 				cn+=1
 		cprint("channel number: %d" % cn)
 
