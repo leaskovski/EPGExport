@@ -16,7 +16,7 @@ from __future__ import division
 #  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 #  GNU General Public License for more details.
 #
-epgexport_version = "1.3-r1"
+epgexport_version = "1.4-r1"
 #
 from Screens.Screen import Screen
 from Screens.MessageBox import MessageBox
@@ -307,7 +307,7 @@ def fixepgexport():
 		if not os_path.exists("/etc/epgexport"):
 			os_symlink("/media/hdd/epgexport","/etc/epgexport")
 		else:
-			source=os.readlink("/etc/epgexport")
+			source=os_readlink("/etc/epgexport")
 			if source != "/media/hdd/epgexport":
 				os_remove("/etc/epgexport")
 				os_symlink("/media/hdd/epgexport","/etc/epgexport")
@@ -994,12 +994,15 @@ class EPGExport(Screen):
 		for service in self.services:
 			service_name = service.getServiceName().replace('\xc2\x86', '').replace('\xc2\x87', '').decode('utf8') 
 			service_ref = service.ref.toString()
+			service_num = service.getChannelNum()
 			if len(service_name) > 0 and service_ref.find("//") is -1:
 				service_id=self.channelID(service)
 				xmltv_channel = etree.SubElement(root,'channel')
 				xmltv_channel.set('id', service_id)
 				xmltv_cname = etree.SubElement(xmltv_channel,'display-name',lang=self.language)
 				xmltv_cname.text = service_name
+				xmltv_cnum = etree.SubElement(xmltv_channel,'display-name',lang=self.language)
+				xmltv_cnum.text = service_num
 				service_picon=self.piconURL(service)
 				if service_picon:
 					xmltv_cicon = etree.SubElement(xmltv_channel,'icon')
