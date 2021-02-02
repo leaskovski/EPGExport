@@ -51,6 +51,8 @@ import datetime
 import xml.etree.ElementTree as etree
 import socket                                                                   
 from socket import gethostname, getfqdn
+from time import gmtime, strftime
+
 # Global variables                                                               
 global WebTimer
 global WebTimer_conn
@@ -169,8 +171,10 @@ for x in range(bouquet_length):
 YELLOWC =  '\033[33m'                                                           
 ENDC = '\033[m'                                                                 
                                                                                 
-def cprint(text):                                                               
-        print("[EPGEXPORT] "+YELLOWC+text+ENDC)
+def cprint(text):
+	with open('/tmp/epgexport.log', 'a') as d:
+		d.write(strftime('%x %X', gmtime()) + ' - ' + text + '\n')
+
 
 def checkLastUpdate():  
 	update_file_name = '/etc/epgexport/LastUpdate.txt'
@@ -406,23 +410,23 @@ def sessionstart(reason, **kwargs):
 		fixepgexport()			
 		if config.plugins.epgexport.webinterface.value=="standard":
 			cprint("STANDARD WEBIF")
-           	       	from Plugins.Extensions.WebInterface.WebChilds.Toplevel import addExternalChild, File
+			from Plugins.Extensions.WebInterface.WebChilds.Toplevel import addExternalChild, File
 			# source XMLTV file is uncompressed
-	       	        addExternalChild( ("epgexport.sources.xml", EPGExportSource(), "epgexport.sources.xml", "1", True) )          
+			addExternalChild( ("epgexport.sources.xml", EPGExportSource(), "epgexport.sources.xml", "1", True) )          
 			# timestamp for server check
-		        addExternalChild( ("LastUpdate.txt", EPGExportLastUpdate(), "LastUpdate.txt", "1", True) )
+			addExternalChild( ("LastUpdate.txt", EPGExportLastUpdate(), "LastUpdate.txt", "1", True) )
 			# channels XMLTV file
-		        addExternalChild( ("epgexport.channels.xml", EPGExportChannels(), "epgexport.channels.xml", "1", True) )          
+			addExternalChild( ("epgexport.channels.xml", EPGExportChannels(), "epgexport.channels.xml", "1", True) )          
 			# channels XMLTV xz file
-		        addExternalChild( ("epgexport.channels.xml.xz", EPGExportChannels(), "epgexport.channels.xml.xz", "1", True) )          
+			addExternalChild( ("epgexport.channels.xml.xz", EPGExportChannels(), "epgexport.channels.xml.xz", "1", True) )          
 			# channels XMLTV gz file
-		        addExternalChild( ("epgexport.channels.xml.gz", EPGExportChannels(), "epgexport.channels.xml.gz", "1", True) )          
+			addExternalChild( ("epgexport.channels.xml.gz", EPGExportChannels(), "epgexport.channels.xml.gz", "1", True) )          
 			# programs XMLTV file
-		        addExternalChild( ("epgexport", EPGExportPrograms(), "epgexport", "1", True) )          
+			addExternalChild( ("epgexport", EPGExportPrograms(), "epgexport", "1", True) )          
 			# programs XMLTV xz file
-		        addExternalChild( ("epgexport.xz", EPGExportPrograms(), "epgexport.xz", "1", True) )          
+			addExternalChild( ("epgexport.xz", EPGExportPrograms(), "epgexport.xz", "1", True) )          
 			# programs XMLTV gz file
-		        addExternalChild( ("epgexport.gz", EPGExportPrograms(), "epgexport.gz", "1", True) )          
+			addExternalChild( ("epgexport.gz", EPGExportPrograms(), "epgexport.gz", "1", True) )          
 		elif config.plugins.epgexport.webinterface.value=="custom":
 			# run Custom Webinterface
 			if config.plugins.epgexport.twisted.value:
@@ -434,11 +438,11 @@ def sessionstart(reason, **kwargs):
 				global WebTimer_conn
 				WebTimer = eTimer()                                                      
 				if not os_path.exists("/var/lib/opkg/status"):                                  
-				        WebTimer_conn = WebTimer.timeout.connect(startingCustomEPGExternal)
+						WebTimer_conn = WebTimer.timeout.connect(startingCustomEPGExternal)
 				else:                                                                           
-				        WebTimer.callback.append(startingCustomEPGExternal)                       
-        			WebTimer.start(5000, True)                                       
-                else:                                                                                 
+						WebTimer.callback.append(startingCustomEPGExternal)                       
+				WebTimer.start(5000, True)                                       
+		else:                                                                                 
 			cprint("NO Webinterface at all")
 		##################################
 		# Autostart of EPG Export
@@ -546,7 +550,7 @@ class EPGExportConfiguration(Screen, ConfigListScreen):
 
 		if config.plugins.epgexport.server.value != "none":
 			if config.plugins.epgexport.server.value=="ip":
-               			host = "%d.%d.%d.%d" % tuple(config.plugins.epgexport.ip.value)
+				host = "%d.%d.%d.%d" % tuple(config.plugins.epgexport.ip.value)
 			else:
 				host = config.plugins.epgexport.hostname.value 
 			epg_string=epgexport_string.replace("localhost",host)
@@ -603,7 +607,7 @@ class EPGExportConfiguration(Screen, ConfigListScreen):
 		self.list.append(getConfigListEntry(_("Channel")+" "+_("ID"), config.plugins.epgexport.channelid))
 		self.list.append(getConfigListEntry(_("Twisted")+" "+_("Background"), config.plugins.epgexport.twisted))
 		self.list.append((("* * * ")+_("Source")+" "+_("XML")+" * * *",))  
-		self.list.append(getConfigListEntry(_("Choose upgrade source"), config.plugins.epgexport.server))
+		self.list.append(getConfigListEntry(_("OpenWebIf PIcon Location"), config.plugins.epgexport.server))
 		if config.plugins.epgexport.server.value=="ip":
 			self.list.append(getConfigListEntry(_("IP Address"), config.plugins.epgexport.ip))
 		if config.plugins.epgexport.server.value=="name":
@@ -928,11 +932,15 @@ class EPGExport(Screen):
 		return channel_id
 
 	def piconURL(self, service):
-		service_name = service.getServiceName().encode('ascii', 'ignore')
-		picon_file = getPiconName(service_name)
-		if picon_file:
-			ip = ConfigIP(default = [192,168,0,100])
-			picon_url = "http://"+ip+":80/picon/"+os_path(picon_file).name
+		picon_url = None
+		if config.plugins.epgexport.server.value != "none":
+			picon_file = getPiconName(service)
+			if picon_file:
+				if config.plugins.epgexport.server.value=="ip":
+					host = "%d.%d.%d.%d" % tuple(config.plugins.epgexport.ip.value)
+				else:
+					host = config.plugins.epgexport.hostname.value 
+				picon_url = "http://"+host+":80/picon/"+os_path.basename(picon_file)
 		return picon_url
 
 	def generateChannels(self):
@@ -994,16 +1002,16 @@ class EPGExport(Screen):
 		for service in self.services:
 			service_name = service.getServiceName().replace('\xc2\x86', '').replace('\xc2\x87', '').decode('utf8') 
 			service_ref = service.ref.toString()
-			service_num = service.getChannelNum()
+#			service_num = service.getChannelNum()
 			if len(service_name) > 0 and service_ref.find("//") is -1:
 				service_id=self.channelID(service)
 				xmltv_channel = etree.SubElement(root,'channel')
 				xmltv_channel.set('id', service_id)
 				xmltv_cname = etree.SubElement(xmltv_channel,'display-name',lang=self.language)
 				xmltv_cname.text = service_name
-				xmltv_cnum = etree.SubElement(xmltv_channel,'display-name',lang=self.language)
-				xmltv_cnum.text = service_num
-				service_picon=self.piconURL(service)
+#				xmltv_cnum = etree.SubElement(xmltv_channel,'display-name',lang=self.language)
+#				xmltv_cnum.text = service_num
+				service_picon=self.piconURL(service_ref)
 				if service_picon:
 					xmltv_cicon = etree.SubElement(xmltv_channel,'icon')
 					xmltv_cicon.set('src',service_picon)
