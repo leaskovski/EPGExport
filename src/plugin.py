@@ -101,6 +101,7 @@ cname=_("Channel")+_("Name")
 channel_opt.append(("nameslow",cname.lower() ))
 channel_opt.append(("nameslang",cname+"."+_("Language").lower() ))
 channel_opt.append(("nameslowlang",cname.lower()+"."+_("Language").lower() ))
+channel_opt.append(("number",_("Channel")+" "+_("Number") ))
 channel_opt.append(("xml",_("Custom (%s)") % "xml" ))
 config.plugins.epgexport.channelid = ConfigSelection(default = "name", choices=channel_opt)
 config.plugins.epgexport.twisted = ConfigYesNo(default = True)  
@@ -839,20 +840,24 @@ class EPGExport(Screen):
 		epg_data = self.queryEPG(test)
 		self.program = [ ]
 		tmp_list = None
-		service = ""
-		sname = ""
+		service = None
 		for x in epg_data:
-			if service != x[0]:
+			if service is None or service.ref != ServiceReference(x[0]).ref:
 				if tmp_list is not None:
-					self.program.append((service, sname, tmp_list[0][0] is not None and tmp_list or None))
-				service = x[0]
-				sname = ServiceReference(service).getServiceName().replace('\xc2\x86', '').replace('\xc2\x87', '')
-				sname = x[1]
-#				cprint("buildEPG service, sname: %s %s" % (service, sname))
+					self.program.append((service, tmp_list[0][0] is not None and tmp_list or None))
+				
+				# Dont use the service return from the EPG query because it wont have a number
+				# so search it from the services list that we used to build the query
+				try:
+					service = next(s for s in self.services if s.ref==ServiceReference(x[0]).ref)
+					cprint("extractEPG found: %s" % str(service))
+				except Exception as e:
+					cprint("extractEPG exception: %s" % str(e))
+
 				tmp_list = [ ]
 			tmp_list.append((x[2], x[3], x[4], x[5], x[6], x[7]))
 		if tmp_list and len(tmp_list):
-			self.program.append((service, sname, tmp_list[0][0] is not None and tmp_list or None))
+			self.program.append((service, tmp_list[0][0] is not None and tmp_list or None))
 		
 	def queryEPG(self, list, buildFunc=None):
 		if self.epgcache is not None:
@@ -903,10 +908,19 @@ class EPGExport(Screen):
 		if level and (not elem.tail or not elem.tail.strip()):
 	            elem.tail = i
 
+	def channelNumber(self,service):
+		if hasattr(service, "ref") and service.ref and '0:0:0:0:0:0:0:0:0' not in service.ref.toString():
+			numservice = service.ref
+			num = numservice and numservice.getChannelNum() or None
+			if num is not None:
+				return num
+		return None
+
 	def channelID(self, service):
 		service_name = service.getServiceName().encode('ascii', 'ignore')
 		service_ref = service.ref.toString()
 		service_id=service_name.replace(" ","").replace("(","").replace(")","").replace("-","").replace(".","").replace("+","").replace("_","").replace("/","").replace('\xc2\x86', '').replace('\xc2\x87', '').decode('utf8')
+		service_num = self.channelNumber(service)
 		if self.tree is not None:
 			# fallback is nameslang
 			channel_id=service_id+"."+self.language
@@ -927,6 +941,8 @@ class EPGExport(Screen):
 			channel_id=service_id.lower()
 		elif config.plugins.epgexport.channelid.value=="nameslowlang":
 			channel_id=service_id.lower()+"."+self.language
+		elif config.plugins.epgexport.channelid.value=="number" and service_num:
+			channel_id=str(service_num)
 		else:   # default = channel name
 			channel_id=service_name
 		return channel_id
@@ -960,6 +976,7 @@ class EPGExport(Screen):
 				xmltv_channel.text = service_ref
 		# etree.tostring has no pretty print to make indent in xml
 		self.indent(root)
+		cprint("Building XMLTV channel list file, completed")
 		return etree.tostring(root,encoding='utf-8')
 
 	def getTimezoneOffset(self):
@@ -1002,15 +1019,12 @@ class EPGExport(Screen):
 		for service in self.services:
 			service_name = service.getServiceName().replace('\xc2\x86', '').replace('\xc2\x87', '').decode('utf8') 
 			service_ref = service.ref.toString()
-#			service_num = service.getChannelNum()
 			if len(service_name) > 0 and service_ref.find("//") is -1:
 				service_id=self.channelID(service)
 				xmltv_channel = etree.SubElement(root,'channel')
 				xmltv_channel.set('id', service_id)
 				xmltv_cname = etree.SubElement(xmltv_channel,'display-name',lang=self.language)
 				xmltv_cname.text = service_name
-#				xmltv_cnum = etree.SubElement(xmltv_channel,'display-name',lang=self.language)
-#				xmltv_cnum.text = service_num
 				service_picon=self.piconURL(service_ref)
 				if service_picon:
 					xmltv_cicon = etree.SubElement(xmltv_channel,'icon')
@@ -1021,13 +1035,13 @@ class EPGExport(Screen):
 		local_time_offset=self.getTimezoneOffset()
 		en=0
 		for program in self.program:
-			if program[2] is not None:
-				service = ServiceReference(program[0])
+			if program[1] is not None:
+				service = program[0]
 				service_name = service.getServiceName().replace('\xc2\x86', '').replace('\xc2\x87', '')
 				service_ref = service.ref.toString()
 				if len(service_name) > 0 and service_ref.find("//") is -1:
 					service_id=self.channelID(service)
-					for event in program[2]:
+					for event in program[1]:
 						prog=dict()
 						title=event[1].strip().encode('utf8')
 						start=int(event[2])
